@@ -1,0 +1,19 @@
+# Core API & Server
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+
+# RAG & Embeddings
+langchain
+langchain-community
+langchain-text-splitters
+langchain-huggingface
+langchain-chroma
+chromadb
+pypdf
+sentence-transformers
+
+# LLM & Voice (TTS)
+groq
+edge-tts
