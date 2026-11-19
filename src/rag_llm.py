@@ -7,7 +7,7 @@ from groq import Groq
 load_dotenv()
 
 STORE_PATH = "chroma_db/chunks.json"
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 def load_chunks(store_path: str = STORE_PATH):
@@ -37,6 +37,27 @@ def retrieve_top_chunks(query: str, chunks: list, top_k: int = 3):
     return [item for score, item in scored[:top_k] if score > 0] or [item for _, item in scored[:top_k]]
 
 
+def resolve_model(client: Groq, preferred_model: str) -> str:
+    try:
+        models = client.models.list()
+        available = [m.id for m in getattr(models, "data", []) if getattr(m, "id", None)]
+        if preferred_model in available:
+            return preferred_model
+        for candidate in [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+            "gemma2-9b-it",
+            "mixtral-8x7b-32768",
+        ]:
+            if candidate in available:
+                return candidate
+        if available:
+            return available[0]
+    except Exception:
+        pass
+    return preferred_model
+
+
 def generate_grounded_answer(query: str, top_k: int = 3) -> str:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -55,8 +76,10 @@ def generate_grounded_answer(query: str, top_k: int = 3) -> str:
     context_str = "\n\n---\n\n".join(context_blocks)
 
     client = Groq(api_key=api_key)
+    model_name = resolve_model(client, GROQ_MODEL)
+
     response = client.chat.completions.create(
-        model=GROQ_MODEL,
+        model=model_name,
         temperature=0.2,
         messages=[
             {
