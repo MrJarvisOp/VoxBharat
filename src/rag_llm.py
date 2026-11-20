@@ -11,11 +11,25 @@ load_dotenv()
 STORE_PATH = "chroma_db/chunks.json"
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
+CHAT_MODEL_CANDIDATES = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768",
+]
+
 STOPWORDS = {
     "the", "is", "in", "at", "of", "on", "and", "a", "an", "to", "for",
     "with", "as", "by", "that", "this", "are", "was", "be", "or", "from",
     "what", "which", "who", "whom", "whose", "where", "when", "why", "how",
 }
+
+
+def is_chat_model(model_id: str) -> bool:
+    """Return True if model ID does not look like an ASR/Whisper/TTS model."""
+    lowered = model_id.lower()
+    blocked_keywords = ("whisper", "audio", "tts", "guard")
+    return not any(word in lowered for word in blocked_keywords)
 
 
 def load_chunks(store_path: str = STORE_PATH) -> list:
@@ -99,24 +113,27 @@ def retrieve_top_chunks(query: str, chunks: list, top_k: int = 4) -> list:
 
 
 def resolve_model(client: Groq, preferred_model: str) -> str:
+    """Select a valid Groq chat completion model, excluding audio/Whisper models."""
     try:
         models = client.models.list()
-        available = [m.id for m in getattr(models, "data", []) if getattr(m, "id", None)]
-        if preferred_model in available:
+        available_chat = [
+            m.id
+            for m in getattr(models, "data", [])
+            if getattr(m, "id", None) and is_chat_model(m.id)
+        ]
+        if preferred_model in available_chat:
             return preferred_model
-        for candidate in [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "gemma2-9b-it",
-            "mixtral-8x7b-32768",
-        ]:
-            if candidate in available:
+        for candidate in CHAT_MODEL_CANDIDATES:
+            if candidate in available_chat:
                 return candidate
-        if available:
-            return available[0]
+        if available_chat:
+            return available_chat[0]
     except Exception:
         pass
-    return preferred_model
+
+    if is_chat_model(preferred_model):
+        return preferred_model
+    return "llama-3.3-70b-versatile"
 
 
 def generate_grounded_answer(query: str, top_k: int = 4) -> dict:
@@ -133,7 +150,7 @@ def generate_grounded_answer(query: str, top_k: int = 4) -> dict:
 
     if not matched:
         return {
-            "answer": "माफ़ कीजिए, उपलब्ध दस्तावेज़ों में इस प्रश्न से संबंधित कोई सत्यापित जानकारी नहीं मिली।",
+            "answer": "इस विषय की स्पष्ट जानकारी उपलब्ध दस्तावेज़ों में नहीं मिली है।",
             "sources": [],
         }
 
@@ -155,10 +172,11 @@ def generate_grounded_answer(query: str, top_k: int = 4) -> dict:
             {
                 "role": "system",
                 "content": (
-                    "You are VoxBharat, a helpful government welfare scheme assistant. "
-                    "Answer strictly using the provided CONTEXT. If the answer is not in the context, "
-                    "clearly state that you do not have verified information on it and do not invent details. "
-                    "Keep the response concise in 3-4 simple, conversational Hindi sentences."
+                    "You are VoxBharat, a clear and helpful government welfare scheme assistant. "
+                    "Answer directly and naturally using only the provided CONTEXT. "
+                    "Do not use stiff filler or apologize repeatedly; if a specific detail is missing "
+                    "from the context, state clearly what is available in the context and what is not mentioned. "
+                    "Never invent facts, rules, or dates. Write 3-4 clear, conversational Hindi sentences."
                 ),
             },
             {
