@@ -17,6 +17,9 @@ build/
 data/
 chroma_db/
 
+# Generated audio outputs
+outputs/
+
 # IDE and OS files
 .vscode/
 .idea/
